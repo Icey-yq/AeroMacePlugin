@@ -1,0 +1,12 @@
+name: AeroMacePlugin
+version: 1.0
+author: YourName
+main: com.aeromace.AeroMacePlugin
+api-version: '1.21'
+description: A legendary mace with omni-dash and true-damage ground slam.
+
+commands:
+  giveaeromace:
+    description: Gives the player the Aero-Breaker mace.
+    usage: /giveaeromace
+    permission: aeromace.admin
