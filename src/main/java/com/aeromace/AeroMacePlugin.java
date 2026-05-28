@@ -45,7 +45,6 @@ public class AeroMacePlugin extends JavaPlugin implements Listener {
         ItemMeta meta = mace.getItemMeta();
         
         if (meta != null) {
-            // 1. Basic Info
             meta.setDisplayName(ChatColor.GOLD + "Aero-Breaker");
             List<String> lore = new ArrayList<>();
             lore.add(ChatColor.GRAY + "Forged in the eye of the storm.");
@@ -54,11 +53,8 @@ public class AeroMacePlugin extends JavaPlugin implements Listener {
             lore.add(ChatColor.AQUA + "Passive: Immune to Fall Damage");
             meta.setLore(lore);
 
-            // 2. Make it Unbreakable
             meta.setUnbreakable(true);
-            meta.addItemFlags(ItemFlag.HIDE_UNBREAKABLE); // Optional: hides the "Unbreakable" text
-
-            // 3. Add Enchantments (Density 5, Mending, Unbreaking 3, Wind Burst 1)
+            meta.addItemFlags(ItemFlag.HIDE_UNBREAKABLE);
             meta.addEnchant(Enchantment.DENSITY, 5, true);
             meta.addEnchant(Enchantment.MENDING, 1, true);
             meta.addEnchant(Enchantment.UNBREAKING, 3, true);
@@ -89,16 +85,18 @@ public class AeroMacePlugin extends JavaPlugin implements Listener {
                 event.setCancelled(true);
                 
                 if (checkCooldown(player)) {
-                    player.setVelocity(player.getLocation().getDirection().multiply(1.5));
+                    // Set Speed to 2.0
+                    player.setVelocity(player.getLocation().getDirection().multiply(2.0));
+                    
+                    // Sound Only (Sonic/Flash particles removed)
                     player.getWorld().playSound(player.getLocation(), Sound.ENTITY_BREEZE_WIND_BURST, 1.2f, 1.0f);
-                    player.getWorld().spawnParticle(Particle.SONIC_BOOM, player.getLocation(), 1);
-
+                    
                     // White Cloud Trail
                     new BukkitRunnable() {
                         int ticks = 0;
                         @Override
                         public void run() {
-                            if (ticks > 10 || !player.isOnline()) {
+                            if (ticks > 12 || !player.isOnline()) {
                                 this.cancel();
                                 return;
                             }
@@ -107,7 +105,6 @@ public class AeroMacePlugin extends JavaPlugin implements Listener {
                         }
                     }.runTaskTimer(this, 0, 1);
 
-                    // Cooldown & Message
                     dashCooldowns.put(player.getUniqueId(), System.currentTimeMillis());
                     new BukkitRunnable() {
                         @Override
