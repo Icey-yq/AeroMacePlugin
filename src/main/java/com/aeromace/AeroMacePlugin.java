@@ -1,8 +1,6 @@
 package com.aeromace;
 
 import org.bukkit.*;
-import org.bukkit.entity.Entity;
-import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -13,7 +11,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.ShapedRecipe;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.util.Vector;
+import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -23,10 +21,8 @@ import java.util.UUID;
 public class AeroMacePlugin extends JavaPlugin implements Listener {
 
     private final HashMap<UUID, Long> dashCooldowns = new HashMap<>();
-    private final HashMap<UUID, Long> slamCooldowns = new HashMap<>();
-    
-    private final long DASH_CD = 15 * 1000; 
-    private final long SLAM_CD = 30 * 1000; 
+    private final long DASH_CD_MILLIS = 15 * 1000; // 15 seconds for logic
+    private final long DASH_CD_TICKS = 15 * 20;    // 15 seconds for the "Ready" timer
 
     @Override
     public void onEnable() {
@@ -50,10 +46,8 @@ public class AeroMacePlugin extends JavaPlugin implements Listener {
             List<String> lore = new ArrayList<>();
             lore.add(ChatColor.GRAY + "Forged in the eye of the storm.");
             lore.add("");
-            lore.add(ChatColor.YELLOW + "Right-Click: 10-Block Omni-Dash (15s CD)");
+            lore.add(ChatColor.YELLOW + "Right-Click: Wind Burst Dash (15s CD)");
             lore.add(ChatColor.AQUA + "Passive: Immune to Fall Damage");
-            lore.add(ChatColor.RED + "Passive: Meteor Slam (8+ Blocks Fall)");
-            lore.add(ChatColor.DARK_RED + " -> Deals 5 Hearts True Damage (30s CD)");
             meta.setLore(lore);
             mace.setItemMeta(meta);
         }
@@ -75,14 +69,46 @@ public class AeroMacePlugin extends JavaPlugin implements Listener {
     @EventHandler
     public void onDash(PlayerInteractEvent event) {
         Player player = event.getPlayer();
-        if (isAeroMace(player.getInventory().getItemInMainHand())) {
+        ItemStack item = player.getInventory().getItemInMainHand();
+
+        if (isAeroMace(item)) {
             if (event.getAction() == Action.RIGHT_CLICK_AIR || event.getAction() == Action.RIGHT_CLICK_BLOCK) {
                 event.setCancelled(true);
-                if (checkCooldown(player, dashCooldowns, DASH_CD, "Dash")) {
-                    player.setVelocity(player.getLocation().getDirection().multiply(2.5));
+                
+                if (checkCooldown(player)) {
+                    // 1. Apply Movement (Speed 1.5)
+                    player.setVelocity(player.getLocation().getDirection().multiply(1.5));
+                    
+                    // 2. Play Breeze Wind Burst Sound
+                    player.getWorld().playSound(player.getLocation(), Sound.ENTITY_BREEZE_WIND_BURST, 1.2f, 1.0f);
                     player.getWorld().spawnParticle(Particle.SONIC_BOOM, player.getLocation(), 1);
-                    player.getWorld().playSound(player.getLocation(), Sound.ENTITY_WIND_CHARGE_THROW, 1f, 1.2f);
+
+                    // 3. Start White Cloud Trail
+                    new BukkitRunnable() {
+                        int ticks = 0;
+                        @Override
+                        public void run() {
+                            if (ticks > 10 || !player.isOnline()) {
+                                this.cancel();
+                                return;
+                            }
+                            player.getWorld().spawnParticle(Particle.CLOUD, player.getLocation(), 5, 0.1, 0.1, 0.1, 0.02);
+                            ticks++;
+                        }
+                    }.runTaskTimer(this, 0, 1);
+
+                    // 4. Set Cooldown & Schedule "Ready" Message
                     dashCooldowns.put(player.getUniqueId(), System.currentTimeMillis());
+                    
+                    new BukkitRunnable() {
+                        @Override
+                        public void run() {
+                            if (player.isOnline()) {
+                                player.sendMessage(ChatColor.GREEN + "Dash is ready!");
+                                player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 0.6f, 2.0f);
+                            }
+                        }
+                    }.runTaskLater(this, DASH_CD_TICKS);
                 }
             }
         }
@@ -90,38 +116,20 @@ public class AeroMacePlugin extends JavaPlugin implements Listener {
 
     @EventHandler
     public void onFallDamage(EntityDamageEvent event) {
-        if (!(event.getEntity() instanceof Player player)) return;
-        if (isAeroMace(player.getInventory().getItemInMainHand())) {
-            if (event.getCause() == EntityDamageEvent.DamageCause.FALL) {
-                float dist = player.getFallDistance();
-                event.setCancelled(true);
-                if (dist >= 8.0f && checkCooldown(player, slamCooldowns, SLAM_CD, "Ground Slam")) {
-                    triggerSlam(player);
-                    slamCooldowns.put(player.getUniqueId(), System.currentTimeMillis());
+        if (event.getEntity() instanceof Player player) {
+            if (isAeroMace(player.getInventory().getItemInMainHand())) {
+                if (event.getCause() == EntityDamageEvent.DamageCause.FALL) {
+                    event.setCancelled(true);
                 }
             }
         }
     }
 
-    private void triggerSlam(Player player) {
-        Location loc = player.getLocation();
-        loc.getWorld().spawnParticle(Particle.EXPLOSION_EMITTER, loc, 1);
-        loc.getWorld().playSound(loc, Sound.ENTITY_GENERIC_EXPLODE, 1f, 0.7f);
-
-        for (Entity e : player.getNearbyEntities(6, 3, 6)) {
-            if (e instanceof LivingEntity target && !e.equals(player)) {
-                target.damage(10.0); // True Damage (ignores armor)
-                target.getWorld().spawnParticle(Particle.WITCH, target.getLocation().add(0, 1, 0), 10);
-                target.setVelocity(target.getLocation().toVector().subtract(loc.toVector()).normalize().multiply(1.5));
-            }
-        }
-    }
-
-    private boolean checkCooldown(Player p, HashMap<UUID, Long> map, long cd, String name) {
-        if (map.containsKey(p.getUniqueId())) {
-            long timeLeft = (map.get(p.getUniqueId()) + cd) - System.currentTimeMillis();
+    private boolean checkCooldown(Player p) {
+        if (dashCooldowns.containsKey(p.getUniqueId())) {
+            long timeLeft = (dashCooldowns.get(p.getUniqueId()) + DASH_CD_MILLIS) - System.currentTimeMillis();
             if (timeLeft > 0) {
-                p.sendMessage(ChatColor.RED + name + " is on cooldown! (" + (timeLeft / 1000) + "s)");
+                p.sendMessage(ChatColor.RED + "Dash is on cooldown! (" + (timeLeft / 1000) + "s)");
                 return false;
             }
         }
