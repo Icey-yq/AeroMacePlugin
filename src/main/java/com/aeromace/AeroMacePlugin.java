@@ -1,12 +1,14 @@
 package com.aeromace;
 
 import org.bukkit.*;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.ShapedRecipe;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -21,8 +23,8 @@ import java.util.UUID;
 public class AeroMacePlugin extends JavaPlugin implements Listener {
 
     private final HashMap<UUID, Long> dashCooldowns = new HashMap<>();
-    private final long DASH_CD_MILLIS = 15 * 1000; // 15 seconds for logic
-    private final long DASH_CD_TICKS = 15 * 20;    // 15 seconds for the "Ready" timer
+    private final long DASH_CD_MILLIS = 15 * 1000;
+    private final long DASH_CD_TICKS = 15 * 20;
 
     @Override
     public void onEnable() {
@@ -41,7 +43,9 @@ public class AeroMacePlugin extends JavaPlugin implements Listener {
     public ItemStack createMace() {
         ItemStack mace = new ItemStack(Material.MACE);
         ItemMeta meta = mace.getItemMeta();
+        
         if (meta != null) {
+            // 1. Basic Info
             meta.setDisplayName(ChatColor.GOLD + "Aero-Breaker");
             List<String> lore = new ArrayList<>();
             lore.add(ChatColor.GRAY + "Forged in the eye of the storm.");
@@ -49,6 +53,17 @@ public class AeroMacePlugin extends JavaPlugin implements Listener {
             lore.add(ChatColor.YELLOW + "Right-Click: Wind Burst Dash (15s CD)");
             lore.add(ChatColor.AQUA + "Passive: Immune to Fall Damage");
             meta.setLore(lore);
+
+            // 2. Make it Unbreakable
+            meta.setUnbreakable(true);
+            meta.addItemFlags(ItemFlag.HIDE_UNBREAKABLE); // Optional: hides the "Unbreakable" text
+
+            // 3. Add Enchantments (Density 5, Mending, Unbreaking 3, Wind Burst 1)
+            meta.addEnchant(Enchantment.DENSITY, 5, true);
+            meta.addEnchant(Enchantment.MENDING, 1, true);
+            meta.addEnchant(Enchantment.UNBREAKING, 3, true);
+            meta.addEnchant(Enchantment.WIND_BURST, 1, true);
+
             mace.setItemMeta(meta);
         }
         return mace;
@@ -69,21 +84,16 @@ public class AeroMacePlugin extends JavaPlugin implements Listener {
     @EventHandler
     public void onDash(PlayerInteractEvent event) {
         Player player = event.getPlayer();
-        ItemStack item = player.getInventory().getItemInMainHand();
-
-        if (isAeroMace(item)) {
+        if (isAeroMace(player.getInventory().getItemInMainHand())) {
             if (event.getAction() == Action.RIGHT_CLICK_AIR || event.getAction() == Action.RIGHT_CLICK_BLOCK) {
                 event.setCancelled(true);
                 
                 if (checkCooldown(player)) {
-                    // 1. Apply Movement (Speed 1.5)
                     player.setVelocity(player.getLocation().getDirection().multiply(1.5));
-                    
-                    // 2. Play Breeze Wind Burst Sound
                     player.getWorld().playSound(player.getLocation(), Sound.ENTITY_BREEZE_WIND_BURST, 1.2f, 1.0f);
                     player.getWorld().spawnParticle(Particle.SONIC_BOOM, player.getLocation(), 1);
 
-                    // 3. Start White Cloud Trail
+                    // White Cloud Trail
                     new BukkitRunnable() {
                         int ticks = 0;
                         @Override
@@ -97,9 +107,8 @@ public class AeroMacePlugin extends JavaPlugin implements Listener {
                         }
                     }.runTaskTimer(this, 0, 1);
 
-                    // 4. Set Cooldown & Schedule "Ready" Message
+                    // Cooldown & Message
                     dashCooldowns.put(player.getUniqueId(), System.currentTimeMillis());
-                    
                     new BukkitRunnable() {
                         @Override
                         public void run() {
